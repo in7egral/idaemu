@@ -18,6 +18,8 @@ TRACE_DATA_READ = 1
 TRACE_DATA_WRITE = 2
 TRACE_CODE = 4
 
+NO_EXTENSIONS = 0
+VFP_ENABLED = 1
 
 class Emu(object):
     def __init__(self, arch, mode, compiler=COMPILE_GCC, stack=0xf000000, \
@@ -29,9 +31,11 @@ class Emu(object):
         self.stack = self._alignAddr(stack)
         self.ssize = ssize
         self.data = []
+        self.dataFiles = []
         self.regs = []
         self.curUC = None
         self.traceOption = TRACE_OFF
+        self.extensionsSupport = NO_EXTENSIONS
         self.logBuffer = []
         self.altFunc = {}
         self._init()
@@ -63,9 +67,6 @@ class Emu(object):
             try:
                 sp = uc.reg_read(self.REG_SP)
                 if self.REG_RA == 0:
-                    #print('set RA from stack...')
-                    #REG_PC = uc.reg_read(self.REG_PC)
-                    #RA = REG_PC + 4
                     RA = unpack(self.pack_fmt, str(uc.mem_read(sp, self.step)))[0]
                     sp += self.step
                 else:
@@ -158,12 +159,6 @@ class Emu(object):
             self.REG_RES = UC_ARM64_REG_X0
             self.REG_ARGS = [UC_ARM64_REG_X0, UC_ARM64_REG_X1, UC_ARM64_REG_X2, UC_ARM64_REG_X3,
                              UC_ARM64_REG_X4, UC_ARM64_REG_X5, UC_ARM64_REG_X6, UC_ARM64_REG_X7]
-            #                 UC_ARM64_REG_X8, UC_ARM64_REG_X9, UC_ARM64_REG_X10, UC_ARM64_REG_X11,
-            #                 UC_ARM64_REG_X12, UC_ARM64_REG_X13, UC_ARM64_REG_X14, UC_ARM64_REG_X15,
-            #                 UC_ARM64_REG_X16, UC_ARM64_REG_X17, UC_ARM64_REG_X18, UC_ARM64_REG_X19,
-            #                 UC_ARM64_REG_X20, UC_ARM64_REG_X21, UC_ARM64_REG_X22, UC_ARM64_REG_X23,
-            #                 UC_ARM64_REG_X24, UC_ARM64_REG_X25, UC_ARM64_REG_X26, UC_ARM64_REG_X27,
-            #                 UC_ARM64_REG_X28, UC_ARM64_REG_X29]
 
     def _initStackAndArgs(self, uc, RA, args):
         uc.mem_map(self.stack, (self.ssize + 1) * PAGE_ALIGN)
@@ -193,7 +188,31 @@ class Emu(object):
     def _showRegs(self, uc):
         print(">>> regs:")
         try:
-            if self.arch == UC_ARCH_ARM64:
+            if self.arch == UC_ARCH_ARM:
+                R0 = uc.reg_read(UC_ARM_REG_R0)
+                R1 = uc.reg_read(UC_ARM_REG_R1)
+                R2 = uc.reg_read(UC_ARM_REG_R2)
+                R3 = uc.reg_read(UC_ARM_REG_R3)
+                R4 = uc.reg_read(UC_ARM_REG_R4)
+                R5 = uc.reg_read(UC_ARM_REG_R5)
+                R6 = uc.reg_read(UC_ARM_REG_R6)
+                R7 = uc.reg_read(UC_ARM_REG_R7)
+                R8 = uc.reg_read(UC_ARM_REG_R8)
+                R9 = uc.reg_read(UC_ARM_REG_R9)
+                R10 = uc.reg_read(UC_ARM_REG_R10)
+                R11 = uc.reg_read(UC_ARM_REG_R11)
+                R12 = uc.reg_read(UC_ARM_REG_R12)
+                SP = uc.reg_read(UC_ARM_REG_SP) # R13
+                PC = uc.reg_read(UC_ARM_REG_PC)
+                LR = uc.reg_read(UC_ARM_REG_LR)
+                print("    R0 = 0x%x, R1 = 0x%x, R2 = 0x%x" % (R0, R1, R2))
+                print("    R3 = 0x%x, R4 = 0x%x, R5 = 0x%x" % (R3, R4, R5))
+                print("    R6 = 0x%x, R7 = 0x%x, R8 = 0x%x" % (R6, R7, R8))
+                print("    R9 = 0x%x, R10 = 0x%x, R11 = 0x%x" % (R9, R10, R11))
+                print("    R12 = 0x%x" % R12)
+                print("    SP = 0x%x" % SP)
+                print("    PC = 0x%x, LR = 0x%x" % (PC, LR))
+            elif self.arch == UC_ARCH_ARM64:
                 X0 = uc.reg_read(UC_ARM64_REG_X0)
                 X1 = uc.reg_read(UC_ARM64_REG_X1)
                 X2 = uc.reg_read(UC_ARM64_REG_X2)
@@ -224,6 +243,7 @@ class Emu(object):
                 X27 = uc.reg_read(UC_ARM64_REG_X27)
                 X28 = uc.reg_read(UC_ARM64_REG_X28)
                 X29 = uc.reg_read(UC_ARM64_REG_X29)
+                SP = uc.reg_read(UC_ARM64_REG_SP) # X30
                 PC = uc.reg_read(UC_ARM64_REG_PC)
                 LR = uc.reg_read(UC_ARM64_REG_LR)
                 print("    X0 = 0x%x, X1 = 0x%x, X2 = 0x%x" % (X0, X1, X2))
@@ -236,6 +256,7 @@ class Emu(object):
                 print("    X21 = 0x%x, X22 = 0x%x, X23 = 0x%x" % (X21, X22, X23))
                 print("    X24 = 0x%x, X25 = 0x%x, X26 = 0x%x" % (X24, X25, X26))
                 print("    X27 = 0x%x, X28 = 0x%x, X29 = 0x%x" % (X27, X28, X29))
+                print("    SP = 0x%x" % SP)
                 print("    PC = 0x%x, LR = 0x%x" % (PC, LR))
             elif self.arch == UC_ARCH_X86:
                 eflags = None
@@ -319,6 +340,7 @@ class Emu(object):
             print("#ERROR: %s" % e)
 
     def _initData(self, uc):
+        # data by values
         for address, data, init in self.data:
             addr = self._alignAddr(address)
             size = PAGE_ALIGN
@@ -326,20 +348,40 @@ class Emu(object):
             uc.mem_map(addr, size)
             if init: uc.mem_write(addr, self._getOriginData(addr, size))
             uc.mem_write(address, data)
+        # data by memory dumps
+        for filename, address, size in self.dataFiles:
+            f = open(filename, "r+b")
+            data = f.read()
 
     def _initRegs(self, uc):
         for reg, value in self.regs:
             uc.reg_write(reg, value)
+        if self.arch == UC_ARCH_ARM64:
+            if self.extensionsSupport & VFP_ENABLED:
+                uc.reg_write(UC_ARM64_REG_CPACR_EL1, (1 << 18) | (3 << 20))
+
+    def _initUnicorneUngine(self):
+        if self.curUC:
+            return
+        
+        # create Unicorne engine and save 
+        uc = Uc(self.arch, self.mode)
+        self.curUC = uc
+
+        self._initData(uc)
+        self._initRegs(uc)
 
     def _emulate(self, startAddr, stopAddr, args=[], TimeOut=0, Count=0):
         try:
+            # reset trace buffer
             self.logBuffer = []
-            uc = Uc(self.arch, self.mode)
-            self.curUC = uc
+            if self.curUC == None:
+                self._initUnicorneUngine()
 
+            uc = self.curUC
+
+            # process arguments passing
             self._initStackAndArgs(uc, stopAddr, args)
-            self._initData(uc)
-            self._initRegs(uc)
 
             # add the invalid memory access hook
             uc.hook_add(UC_HOOK_MEM_READ_UNMAPPED | UC_HOOK_MEM_WRITE_UNMAPPED | \
@@ -355,12 +397,35 @@ class Emu(object):
         except UcError as e:
             print("#ERROR: %s (PC = %x)" % (e, self.curUC.reg_read(self.REG_PC)))
 
+    # force Unicorne object to be created before emulating,
+    # e.g. to have abilty access data
+    def silentStart(self):
+        if self.curUC == None:
+            self._initUnicorneUngine()
+
+    def reset(self):
+        if self.curUC:
+            self.curUC = None
+
+    def setMemoryFileData(self, filename, base):
+        size = os.path.getsize(filename)
+        if size == 0:
+            print("file size is zero or file is not found")
+            return
+        self.dataFiles.append((filename, base, size))
+
     # set the data before emulation
     def setData(self, address, data, init=False):
         self.data.append((address, data, init))
 
     def setReg(self, reg, value):
         self.regs.append((reg, value))
+
+    def getReg(self, reg):
+        if self.curUC == None:
+            print("current uc is none.")
+            return
+        return self.curUC.reg_read(reg)
 
     def showRegs(self, *regs):
         if self.curUC == None:
@@ -382,29 +447,38 @@ class Emu(object):
             stackData.append((stackPointer + i * dataSize, st[0]))
         return stackData
 
+    def getData(self, fmt, addr, count=1):
+        if self.curUC == None:
+            print("current uc is none.")
+            return
+        res = ''
+        if count > 1: res += '['
+        for i in range(count):
+            dataSize = calcsize(fmt)
+            data = self.curUC.mem_read(addr + i * dataSize, dataSize)
+            if count > 1 and i < count - 1: res += '    '
+            st = unpack_from(fmt, data)
+            res += ''.join(st)
+            if count > 1 and i < count - 1: res += ','
+        res += ']' if count > 1 else ''
+        return res
+
     def showData(self, fmt, addr, count=1):
         if self.curUC == None:
             print("current uc is none.")
             return
-        if count > 1: print('[')
-        for i in range(count):
-            dataSize = calcsize(fmt)
-            data = self.curUC.mem_read(addr + i * dataSize, dataSize)
-            if count > 1: print('    ', end='')
-            st = unpack_from(fmt, data)
-            print(''.join(st))
-            if count > 1: print(',')
-        print(']') if count > 1 else print('')
+        data = self.getData(fmt, addr, count)
+        print(data)
 
     def showDump(self, addr, count=1):
         if self.curUC == None:
             print("current uc is none.")
             return
-        print('[')
         data = self.curUC.mem_read(addr, count)
-	q = ''
+        print('[')
+        q = ''
         for c in data:
-		q += '%x ' % c
+            q += '%02x ' % c
         print(q)
         print(']')
 
@@ -413,6 +487,12 @@ class Emu(object):
             self.traceOption |= opt
         else:
             self.traceOption = TRACE_OFF
+
+    def setExtensionEnabled(self, vfp):
+        if vfp != VFP_ENABLED:
+            self.extensionsSupport &= ~VFP_ENABLED
+        else:
+            self.extensionsSupport = VFP_ENABLED
 
     def showTrace(self):
         logs = "\n".join(self.logBuffer)
@@ -426,7 +506,7 @@ class Emu(object):
         assert (callable(func))
         self.altFunc[address] = (func, argc, balance)
 
-    def eFunc(self, address=None, retAddr=None, args=[]):
+    def eFunc(self, address=None, retAddr=None, args=[], force=False):
         if address == None: address = here()
         func = get_func(address)
         if retAddr == None:
@@ -436,7 +516,10 @@ class Emu(object):
             else:
                 print("Please offer the return address.")
                 return
-        self._emulate(func.start_ea, retAddr, args)
+        if force:
+            self._emulate(address, retAddr, args)
+        else:
+            self._emulate(func.start_ea, retAddr, args)
         res = self.curUC.reg_read(self.REG_RES)
         return res
 
