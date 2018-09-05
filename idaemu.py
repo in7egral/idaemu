@@ -340,26 +340,34 @@ class Emu(object):
         except UcError as e:
             print("#ERROR: %s" % e)
 
-    def _initData(self, uc):
+    def _initData(self):
         # data by values
         for address, data, init in self.data:
             addr = self._alignAddr(address)
             size = PAGE_ALIGN
             while size < len(data): size += PAGE_ALIGN
-            uc.mem_map(addr, size)
-            if init: uc.mem_write(addr, self._getOriginData(addr, size))
-            uc.mem_write(address, data)
+            self.curUC.mem_map(addr, size)
+            if init: self.curUC.mem_write(addr, self._getOriginData(addr, size))
+            self.curUC.mem_write(address, data)
         # data by memory dumps
         for filename, address, size in self.dataFiles:
             f = open(filename, "r+b")
             data = f.read()
 
-    def _initRegs(self, uc):
+    def _initRegs(self):
         for reg, value in self.regs:
-            uc.reg_write(reg, value)
-        if self.arch == UC_ARCH_ARM64:
+            self.curUC.reg_write(reg, value)
+        if self.arch == UC_ARCH_ARM:
             if self.extensionsSupport & VFP_ENABLED:
-                uc.reg_write(UC_ARM64_REG_CPACR_EL1, (1 << 18) | (3 << 20))
+                regval = self.curUC.reg_read(UC_ARM_REG_C1_C0_2)
+                regval |= (0xF << 20)
+                self.curUC.reg_write(UC_ARM_REG_C1_C0_2, regval)
+                self.curUC.reg_write(UC_ARM_REG_FPEXC, 0x40000000)
+        elif self.arch == UC_ARCH_ARM64:
+            if self.extensionsSupport & VFP_ENABLED:
+                regval = self.curUC.reg_read(UC_ARM64_REG_CPACR_EL1)
+                regval |= (1 << 18) | (3 << 20)
+                self.curUC.reg_write(UC_ARM64_REG_CPACR_EL1, regval)
 
     def _initUnicorneUngine(self):
         if self.curUC:
@@ -369,8 +377,8 @@ class Emu(object):
         uc = Uc(self.arch, self.mode)
         self.curUC = uc
 
-        self._initData(uc)
-        self._initRegs(uc)
+        self._initData()
+        self._initRegs()
 
     def _emulate(self, startAddr, stopAddr, args=[], TimeOut=0, Count=0, DisablePatchRA=False):
         try:
