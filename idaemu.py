@@ -160,15 +160,16 @@ class Emu(object):
             self.REG_ARGS = [UC_ARM64_REG_X0, UC_ARM64_REG_X1, UC_ARM64_REG_X2, UC_ARM64_REG_X3,
                              UC_ARM64_REG_X4, UC_ARM64_REG_X5, UC_ARM64_REG_X6, UC_ARM64_REG_X7]
 
-    def _initStackAndArgs(self, uc, RA, args):
+    def _initStackAndArgs(self, uc, RA, args, DisablePatchRA):
         uc.mem_map(self.stack, (self.ssize + 1) * PAGE_ALIGN)
         sp = self.stack + self.ssize * PAGE_ALIGN
         uc.reg_write(self.REG_SP, sp)
 
-        if self.REG_RA == 0:
-            uc.mem_write(sp, pack(self.pack_fmt, RA))
-        else:
-            uc.reg_write(self.REG_RA, RA)
+        if not DisablePatchRA:
+            if self.REG_RA == 0:
+                uc.mem_write(sp, pack(self.pack_fmt, RA))
+            else:
+                uc.reg_write(self.REG_RA, RA)
 
         ## init the arguments
         i = 0
@@ -371,7 +372,7 @@ class Emu(object):
         self._initData(uc)
         self._initRegs(uc)
 
-    def _emulate(self, startAddr, stopAddr, args=[], TimeOut=0, Count=0):
+    def _emulate(self, startAddr, stopAddr, args=[], TimeOut=0, Count=0, DisablePatchRA=False):
         try:
             # reset trace buffer
             self.logBuffer = []
@@ -381,7 +382,7 @@ class Emu(object):
             uc = self.curUC
 
             # process arguments passing
-            self._initStackAndArgs(uc, stopAddr, args)
+            self._initStackAndArgs(uc, stopAddr, args, DisablePatchRA)
 
             # add the invalid memory access hook
             uc.hook_add(UC_HOOK_MEM_READ_UNMAPPED | UC_HOOK_MEM_WRITE_UNMAPPED | \
@@ -526,9 +527,9 @@ class Emu(object):
     def eBlock(self, codeStart=None, codeEnd=None):
         if codeStart == None: codeStart = SelStart()
         if codeEnd == None: codeEnd = SelEnd()
-        self._emulate(codeStart, codeEnd)
+        self._emulate(startAddr=codeStart, stopAddr=codeEnd, args=[], TimeOut=0, Count=0, DisablePatchRA=True)
         self._showRegs(self.curUC)
 
     def eUntilAddress(self, startAddr, stopAddr, args=[], TimeOut=0, Count=0):
-        self._emulate(startAddr=startAddr, stopAddr=stopAddr, args=args, TimeOut=TimeOut, Count=Count)
+        self._emulate(startAddr=startAddr, stopAddr=stopAddr, args=args, TimeOut=TimeOut, Count=Count, DisablePatchRA=True)
         self._showRegs(self.curUC)
