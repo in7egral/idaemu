@@ -4,9 +4,10 @@ from unicorn.x86_const import *
 from unicorn.arm_const import *
 from unicorn.arm64_const import *
 from struct import unpack, pack, unpack_from, calcsize
-from idaapi import get_func
-from idc import Qword, GetManyBytes, SelStart, SelEnd, here, ItemSize
-from idautils import XrefsTo
+import idc
+import idaapi
+import idautils
+import os
 
 PAGE_ALIGN = 0x1000  # 4k
 
@@ -100,11 +101,18 @@ class Emu(object):
     def _getOriginData(self, address, size):
         res = []
         for offset in xrange(0, size, 64):
-            tmp = GetManyBytes(address + offset, 64)
-            if tmp == None:
-                res.extend([pack("<Q", Qword(address + offset + i)) for i in range(0, 64, 8)])
+            if idaapi.IDA_SDK_VERSION < 700:
+                tmp = idc.GetManyBytes(address + offset, 64)
+                if tmp == None:
+                    res.extend([pack("<Q", Qword(address + offset + i)) for i in range(0, 64, 8)])
+                else:
+                    res.append(tmp)
             else:
-                res.append(tmp)
+                tmp = idc.get_bytes(address + offset, 64)
+                if tmp == None:
+                    res.extend([pack("<Q", get_qword(address + offset + i)) for i in range(0, 64, 8)])
+                else:
+                    res.append(tmp)
         res = "".join(res)
         return res[:size]
 
@@ -350,9 +358,16 @@ class Emu(object):
             if init: self.curUC.mem_write(addr, self._getOriginData(addr, size))
             self.curUC.mem_write(address, data)
         # data by memory dumps
-        for filename, address, size in self.dataFiles:
+        for filename, address, filesize in self.dataFiles:
+            # read data
             f = open(filename, "r+b")
             data = f.read()
+            # map data
+            addr = self._alignAddr(address)
+            size = PAGE_ALIGN
+            while addr + size < address + filesize: size += PAGE_ALIGN
+            self.curUC.mem_map(addr, size)
+            self.curUC.mem_write(address, data)
 
     def _initRegs(self):
         for reg, value in self.regs:
@@ -406,6 +421,16 @@ class Emu(object):
         except UcError as e:
             print("#ERROR: %s (PC = %x)" % (e, self.curUC.reg_read(self.REG_PC)))
 
+    def _is_thumb_ea(self, ea):
+        if idaapi.ph.id == idaapi.PLFM_ARM and not idaapi.ph.flag & idaapi.PR_USE64:
+            if idaapi.IDA_SDK_VERSION >= 700:
+                t = idc.get_sreg(ea, "T") # get T flag
+            else:
+                t = get_segreg(ea, 20) # get T flag
+            return t is not idc.BADSEL and t is not 0
+        else:
+            return False
+
     # force Unicorne object to be created before emulating,
     # e.g. to have abilty access data
     def silentStart(self):
@@ -420,8 +445,9 @@ class Emu(object):
         size = os.path.getsize(filename)
         if size == 0:
             print("file size is zero or file is not found")
-            return
+            return 0
         self.dataFiles.append((filename, base, size))
+        return size
 
     # set the data before emulation
     def setData(self, address, data, init=False):
@@ -459,17 +485,19 @@ class Emu(object):
     def getData(self, fmt, addr, count=1):
         if self.curUC == None:
             print("current uc is none.")
-            return
-        res = ''
-        if count > 1: res += '['
+            return None
+        dataSize = calcsize(fmt)
+        if dataSize == 0:
+            return None
+        if count == 1:
+            return unpack_from(fmt, self.curUC.mem_read(addr, dataSize))
+        res = '['
         for i in range(count):
-            dataSize = calcsize(fmt)
-            data = self.curUC.mem_read(addr + i * dataSize, dataSize)
-            if count > 1 and i < count - 1: res += '    '
-            st = unpack_from(fmt, data)
-            res += ''.join(st)
-            if count > 1 and i < count - 1: res += ','
-        res += ']' if count > 1 else ''
+            st = unpack_from(fmt, self.curUC.mem_read(addr + i * dataSize, dataSize))
+            if i < count - 1: res += ' ' * 4
+            res += ''.join(str(i) for i in st) if type(st) == tuple else ''.join(st)
+            if i < count - 1: res += ','
+        res += ']'
         return res
 
     def showData(self, fmt, addr, count=1):
@@ -516,25 +544,25 @@ class Emu(object):
         self.altFunc[address] = (func, argc, balance)
 
     def eFunc(self, address=None, retAddr=None, args=[], force=False):
-        if address == None: address = here()
-        func = get_func(address)
+        if address == None: address = idc.here()
+        func = idaapi.get_func(address)
         if retAddr == None:
-            refs = [ref.frm for ref in XrefsTo(func.start_ea, 0)]
+            refs = [ref.frm for ref in idautils.XrefsTo(func.start_ea, 0)]
             if len(refs) != 0:
-                retAddr = refs[0] + ItemSize(refs[0])
+                retAddr = refs[0] + idc.ItemSize(refs[0])
             else:
                 print("Please offer the return address.")
                 return
-        if force:
-            self._emulate(address, retAddr, args)
-        else:
-            self._emulate(func.start_ea, retAddr, args)
+        if not force:
+            address = func.start_ea
+        address = address | 1 if self._is_thumb_ea(address) else address
+        self._emulate(address, retAddr, args)
         res = self.curUC.reg_read(self.REG_RES)
         return res
 
     def eBlock(self, codeStart=None, codeEnd=None):
-        if codeStart == None: codeStart = SelStart()
-        if codeEnd == None: codeEnd = SelEnd()
+        if codeStart == None: codeStart = idc.SelStart()
+        if codeEnd == None: codeEnd = idc.SelEnd()
         self._emulate(startAddr=codeStart, stopAddr=codeEnd, args=[], TimeOut=0, Count=0, DisablePatchRA=True)
         self._showRegs(self.curUC)
 
