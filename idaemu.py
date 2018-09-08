@@ -563,9 +563,11 @@ class Emu(object):
     def eBlock(self, codeStart=None, codeEnd=None):
         if codeStart == None: codeStart = idc.SelStart()
         if codeEnd == None: codeEnd = idc.SelEnd()
+        codeStart = codeStart | 1 if self._is_thumb_ea(codeStart) else codeStart
         self._emulate(startAddr=codeStart, stopAddr=codeEnd, args=[], TimeOut=0, Count=0, DisablePatchRA=True)
         self._showRegs(self.curUC)
 
     def eUntilAddress(self, startAddr, stopAddr, args=[], TimeOut=0, Count=0):
+        startAddr = startAddr | 1 if self._is_thumb_ea(startAddr) else startAddr
         self._emulate(startAddr=startAddr, stopAddr=stopAddr, args=args, TimeOut=TimeOut, Count=Count, DisablePatchRA=True)
         self._showRegs(self.curUC)
