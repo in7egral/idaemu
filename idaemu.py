@@ -22,6 +22,14 @@ TRACE_CODE = 4
 NO_EXTENSIONS = 0
 VFP_ENABLED = 1
 
+# support for old IDA versions
+if idaapi.IDA_SDK_VERSION < 700:
+    IDAAPI_GetBytes = idc.get_many_bytes
+    IDAAPI_get_qword = Qword
+else:
+    IDAAPI_GetBytes = idc.get_bytes
+    IDAAPI_get_qword = idc.get_qword
+
 class Emu(object):
     def __init__(self, arch, mode, compiler=COMPILE_GCC, stack=0xf000000, \
                  ssize=3):
@@ -39,6 +47,7 @@ class Emu(object):
         self.extensionsSupport = NO_EXTENSIONS
         self.logBuffer = []
         self.altFunc = {}
+        self.disalePatchedBytes = False
         self._init()
 
     def _addTrace(self, logInfo):
@@ -98,21 +107,34 @@ class Emu(object):
     def _alignAddr(self, addr):
         return addr // PAGE_ALIGN * PAGE_ALIGN
 
+    def _bytes_unpatcher(self, ea, fpos, org_val, patch_val):
+        if fpos != -1:
+            if type(self.unp_tmp) == tuple:
+                self.unp_tmp[ea - self.unp_from_ea] = org_val
+            elif type(self.unp_tmp) == long:
+                shift = (ea - self.unp_from_ea) * 8
+                mask = ~(0xFF << shift)
+                self.unp_tmp = (self.unp_tmp  & mask) | (org_val << shift)
+
+    def _unpatch(self, from_ea, to_ea):
+        if self.disalePatchedBytes:
+            self.unp_from_ea = from_ea
+            idaapi.visit_patched_bytes(from_ea, to_ea, self._bytes_unpatcher)
+
+    def _get_unpatched_qword(self, ea):
+        self.unp_tmp = IDAAPI_get_qword(ea)
+        self._unpatch(ea, ea + 8)
+        return self.unp_tmp
+
     def _getOriginData(self, address, size):
         res = []
         for offset in xrange(0, size, 64):
-            if idaapi.IDA_SDK_VERSION < 700:
-                tmp = idc.GetManyBytes(address + offset, 64)
-                if tmp == None:
-                    res.extend([pack("<Q", Qword(address + offset + i)) for i in range(0, 64, 8)])
-                else:
-                    res.append(tmp)
+            self.unp_tmp = IDAAPI_GetBytes(address + offset, 64)
+            if self.unp_tmp == None:
+                res.extend([pack("<Q", self._get_unpatched_qword(address + offset + i)) for i in range(0, 64, 8)])
             else:
-                tmp = idc.get_bytes(address + offset, 64)
-                if tmp == None:
-                    res.extend([pack("<Q", get_qword(address + offset + i)) for i in range(0, 64, 8)])
-                else:
-                    res.append(tmp)
+                self._unpatch(address + offset, address + offset + 64)
+                res.append(self.unp_tmp)
         res = "".join(res)
         return res[:size]
 
@@ -505,6 +527,8 @@ class Emu(object):
             print("current uc is none.")
             return
         data = self.getData(fmt, addr, count)
+        if type(data) == tuple:
+            data = ''.join(data)
         print(data)
 
     def showDump(self, addr, count=1):
@@ -530,6 +554,9 @@ class Emu(object):
             self.extensionsSupport &= ~VFP_ENABLED
         else:
             self.extensionsSupport = VFP_ENABLED
+
+    def disablePatchedBytes(self, isDisable=True):
+        self.disalePatchedBytes = isDisable
 
     def showTrace(self):
         logs = "\n".join(self.logBuffer)
