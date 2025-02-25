@@ -16,20 +16,25 @@ Install
 1. Install Unicorn Engine
 If you want to use idaemu, you have to install [unicorn-engine](http://www.unicorn-engine.org) and unicorn's python binding first with pip install unicorn. Then use the `ida_emu_module` as the idapython script.  
 Windows: Install Unicorn using pip:
+```
 pip install unicorn
-
+```
 Linux: Install Unicorn from source:
+```
 git clone https://github.com/unicorn-engine/unicorn.git
 cd unicorn
 ./make.sh
 sudo ./make.sh install
-
+```
 macOS: Install Unicorn using Homebrew:
+```
 brew install unicorn
+```
 
 2. Install Python Bindings
 Ensure you have the correct version of Python installed. Use the idapyswitch tool to select the appropriate Python version for IDA Pro. For example:
 
+```
 /Applications/IDA\ Professional\ 9.0.app/Contents/MacOS/idapyswitch 0
 The following Python installations were found:
     #0: 3.13.0 ('') (/opt/homebrew/Cellar/python@3.13/3.13.1/Frameworks/Python.framework/Versions/3.13/Python)
@@ -43,12 +48,15 @@ The following Python installations were found:
 Please pick a number between 0 and 7 (default: 0)
 0
 Applying version 3.13.0 ('')
+```
 
 
 3. Install idaemu Plugin
-Place the Ida_emu_init.py file and the Ida_emu_module folder into the plugins directory of your IDA Pro installation:
-Windows/Linux: Copy the files to: IDA Professional 9.0/plugins
-macOS: Move the files to: /Applications/IDA\ Professional\ 9.0.app/Contents/MacOS/plugins
+Place the Ida_emu_init.py file and the Ida_emu_module folder into the plugins directory of your IDA Pro installation.
+
+Windows/Linux: Copy the files to "IDA Professional 9.0/plugins"
+
+macOS: Move the files to "/Applications/IDA\ Professional\ 9.0.app/Contents/MacOS/plugins"
 
 License
 -------
@@ -58,17 +66,19 @@ This project is released under the [GPL license](COPYING).
 Docs of classes
 -------
 In the IDA Pro Python console, you can use magic methods to explore the documentation of various classes available for emulating processes
-python>>> from ida_emu_module import *
-python>>> Emu.__doc__
-python>>> Helper.__doc__
-python>>> QString.__doc__
-python>>> QList.__doc__
-python>>> EmulatedQtHelpers.__doc__
-python>>> QBitArray.__doc__
-python>>> Conv.__doc__
-python>>> EmulatedMath.__doc__
-python>>> Registers.__doc__
-python>>> StdLib_Ops.__doc__
+``` python
+  python>>> from ida_emu_module import *
+  python>>> Emu.__doc__
+  python>>> Helper.__doc__
+  python>>> QString.__doc__
+  python>>> QList.__doc__
+  python>>> EmulatedQtHelpers.__doc__
+  python>>> QBitArray.__doc__
+  python>>> Conv.__doc__
+  python>>> EmulatedMath.__doc__
+  python>>> Registers.__doc__
+  python>>> StdLib_Ops.__doc__
+```
 
 Example0
 -------
@@ -95,7 +105,7 @@ This is easy function for add.
 .text:0000000000400540 myadd           endp
 ```
 
-Running the idapython scritp:
+Running the idapython script:
 ``` python
 from ida_emu_module import *
 a = Emu(UC_ARCH_X86, UC_MODE_64)
@@ -112,7 +122,7 @@ Example2
 -------
 
 If there is a library function call inside the function, we couldn't call it directly. We should use `alt` to hook the library function first.
-```
+``` asm
 .text:0000000000400560                 public myadd
 .text:0000000000400560 myadd           proc near               ; CODE XREF: main+27p
 .text:0000000000400560
@@ -166,7 +176,7 @@ Example3
 -------
 
 Sometimes it emulates fail with some abort:
-``` 
+``` python
 Python>from ida_emu_module import *
 Python>a = Emu(UC_ARCH_ARM, UC_MODE_THUMB)
 Python>print a.eFunc(here(), 0xbeae, [4])
@@ -176,7 +186,7 @@ Python>print a.eFunc(here(), 0xbeae, [4])
 
 Then we can use `setTrace` and `showTrace` for debugging.
 
-```
+``` python
 Python>from ida_emu_module import *
 Python>a = Emu(UC_ARCH_ARM, UC_MODE_THUMB)
 Python>a.setTrace(TRACE_CODE)
